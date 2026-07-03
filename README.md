@@ -81,10 +81,3 @@ server/
     baselines.mjs            House harnesses (One-Shot, Self-Repair) + starter code
 src/                         Graphite/Linear React frontend
 ```
-
-## 3-minute demo script
-
-1. **Story (30s):** "There's no LeetCode for agent engineers. Companies can't measure harness skill." Show the leaderboard with One-Shot at 2/4.
-2. **Live (90s):** Load the **Self-Repair** preset → Submit. Watch the sandbox run each hidden task, self-repair fire (2× calls on the mediums), and the row land at 4/4. Same model, 2× the score.
-3. **EdgeOne (30s):** "Untrusted code in a sandbox, one metered model via AI Gateway, durable leaderboard in context.store — one-click deployed. Here's the live URL, submit from your phone."
-4. **Ask (30s):** the standard + credential angle; roadmap to more benchmarks (SWE-bench, tool-use, research).
