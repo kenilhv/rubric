@@ -55,6 +55,31 @@ export function runCandidate(solutionSource, fnName, args) {
   }
 }
 
+// EdgeOne sandbox executor — writes candidate to /tmp and runs via node.
+export function createEdgeOneRunCandidate(context) {
+  return async function runCandidateEdgeOne(solutionSource, fnName, args) {
+    const wrapped = `
+${solutionSource}
+const __args = ${JSON.stringify(args)};
+const __out = ${fnName}.apply(null, __args);
+console.log(JSON.stringify(__out));
+`;
+    try {
+      await context.sandbox.files.write("/tmp/rubric-candidate.js", wrapped);
+      const result = await context.sandbox.commands.run("node /tmp/rubric-candidate.js", {
+        timeout: Math.ceil(SOLUTION_TIMEOUT_MS / 1000),
+      });
+      if (result.exitCode !== 0) {
+        return { ok: false, error: result.stderr?.trim() || `exit ${result.exitCode}` };
+      }
+      const line = (result.stdout || "").trim().split("\n").pop();
+      return { ok: true, value: line ? JSON.parse(line) : null };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  };
+}
+
 function safeClone(v) {
   return JSON.parse(JSON.stringify(v));
 }

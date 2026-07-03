@@ -13,10 +13,10 @@ const PRICE = {
 };
 
 export class LLM {
-  constructor({ model } = {}) {
+  constructor({ model, baseUrl, apiKey } = {}) {
     this.model = model || process.env.RUBRIC_MODEL || "claude-haiku-4-5-20251001";
-    this.baseUrl = process.env.AI_GATEWAY_BASE_URL || "";
-    this.apiKey = process.env.AI_GATEWAY_API_KEY || "";
+    this.baseUrl = baseUrl ?? process.env.AI_GATEWAY_BASE_URL ?? "";
+    this.apiKey = apiKey ?? process.env.AI_GATEWAY_API_KEY ?? "";
     this.live = Boolean(this.baseUrl && this.apiKey);
     this.usage = { calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_usd: 0 };
   }

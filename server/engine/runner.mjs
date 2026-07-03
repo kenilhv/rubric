@@ -5,13 +5,13 @@ import { LLM } from "./llm.mjs";
 import { TASKS, publicSpec, deepEqual } from "./codingBench.mjs";
 import { compileHarness, runHarness, runCandidate, extractCode } from "./sandbox.mjs";
 
-function gradeSolution(solutionCode, task) {
+async function gradeSolution(solutionCode, task, runCandidateFn = runCandidate) {
   if (!solutionCode || !solutionCode.includes(task.fnName)) {
     return { ok: false, passedCount: 0, firstFail: `no function \`${task.fnName}\` returned` };
   }
   let passedCount = 0;
   for (const test of task.tests) {
-    const res = runCandidate(solutionCode, task.fnName, test.input);
+    const res = await runCandidateFn(solutionCode, task.fnName, test.input);
     if (!res.ok) return { ok: false, passedCount, firstFail: `runtime ${res.error}` };
     if (!deepEqual(res.value, test.expected)) {
       return {
@@ -25,9 +25,16 @@ function gradeSolution(solutionCode, task) {
   return { ok: true, passedCount, firstFail: "" };
 }
 
-export async function runSubmission({ name, author = "anon", source, model }, { onEvent } = {}) {
-  const emit = (e) => { try { onEvent && onEvent(e); } catch {} };
-  const llm = new LLM({ model });
+export async function runSubmission(
+  { name, author = "anon", source, model },
+  { onEvent, llmConfig, runCandidateFn, signal } = {}
+) {
+  const emit = (e) => {
+    try {
+      onEvent && onEvent(e);
+    } catch {}
+  };
+  const llm = new LLM({ model, ...llmConfig });
   const startedAt = Date.now();
 
   let solve;
@@ -52,6 +59,10 @@ export async function runSubmission({ name, author = "anon", source, model }, { 
   let passed = 0;
 
   for (const task of TASKS) {
+    if (signal?.aborted) {
+      emit({ type: "error_message", content: "run aborted" });
+      break;
+    }
     emit({ type: "task_start", id: task.id, title: task.title });
     const spec = publicSpec(task);
     const before = { tokens: llm.usage.total_tokens, calls: llm.usage.calls, cost: llm.usage.cost_usd };
@@ -62,7 +73,7 @@ export async function runSubmission({ name, author = "anon", source, model }, { 
     try {
       const out = await runHarness(solve, spec, llmFn);
       const solutionCode = extractCode(String(out ?? ""));
-      const graded = gradeSolution(solutionCode, task);
+      const graded = await gradeSolution(solutionCode, task, runCandidateFn);
       if (graded.ok) {
         status = "pass";
         passed++;

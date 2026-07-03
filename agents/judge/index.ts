@@ -1,103 +1,100 @@
-// EdgeOne Makers agent: POST /agents/judge
-//
-// This is the production judge. It reuses the SAME engine that server/dev-server.mjs
-// runs locally, so behavior is identical — only two things swap at deploy time:
-//
-//   1. Model calls  -> the real AI Gateway (AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL
-//      are auto-injected by EdgeOne). server/engine/llm.mjs already prefers the
-//      gateway whenever those vars exist, so no change needed here.
-//   2. Leaderboard   -> context.store (durable) instead of the local JSON file.
-//
-// Candidate/harness code executes in the platform sandbox. If EdgeOne's runtime
-// exposes a dedicated sandbox tool, route runCandidate() there; the vm-based path
-// in server/engine/sandbox.mjs is the local-dev fallback.
+// EdgeOne Makers agent: POST /judge
+// Streams a harness run as SSE; posts the result to the leaderboard cloud function.
 
+import { createSSEResponse, sseEvent } from "../_shared";
 import { runSubmission } from "../../server/engine/runner.mjs";
-import { PROBLEM, TASKS, publicSpec } from "../../server/engine/codingBench.mjs";
-import { STARTER_SRC, ONE_SHOT_SRC, SELF_REPAIR_SRC, BASELINES } from "../../server/engine/baselines.mjs";
+import { createEdgeOneRunCandidate } from "../../server/engine/sandbox.mjs";
+import { rank } from "../../server/engine/rank.mjs";
 
-const LB_KEY = "rubric:coding-bench:leaderboard";
+type JudgeBody = { name?: string; source?: string; model?: string };
 
-function rank(rows: any[]) {
-  return [...rows]
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.tokens - b.tokens ||
-        a.cost_usd - b.cost_usd ||
-        a.latency_ms - b.latency_ms
-    )
-    .map((r, i) => ({ rank: i + 1, ...r }));
-}
-
-async function loadRows(context: any): Promise<any[]> {
-  const raw = await context.store.get(LB_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-async function saveRows(context: any, rows: any[]) {
-  await context.store.set(LB_KEY, JSON.stringify(rows));
-}
-
-async function seedIfEmpty(context: any) {
-  const rows = await loadRows(context);
-  if (rows.length) return rows;
-  for (const b of BASELINES) {
-    const { row } = await runSubmission(b);
-    if (row) rows.push({ id: rid(), ...row });
-  }
-  await saveRows(context, rows);
-  return rows;
-}
-
-const rid = () => Math.random().toString(36).slice(2, 10);
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-export default async function handler(request: Request, context: any) {
-  const url = new URL(request.url);
-  const action = url.searchParams.get("action") || (request.method === "GET" ? "problem" : "submit");
-
-  if (action === "problem") {
-    return json({
-      problem: PROBLEM,
-      tasks: TASKS.map(publicSpec),
-      starter: STARTER_SRC,
-      presets: { starter: STARTER_SRC, oneShot: ONE_SHOT_SRC, selfRepair: SELF_REPAIR_SRC },
-      live: Boolean(process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_BASE_URL),
+async function postLeaderboardRow(
+  baseUrl: string,
+  row: Record<string, unknown>
+): Promise<{ rows: unknown[] } | null> {
+  try {
+    const res = await fetch(`${baseUrl}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ row }),
     });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
   }
+}
 
-  if (action === "leaderboard") {
-    return json({ rows: rank(await seedIfEmpty(context)) });
-  }
+function requestBaseUrl(context: any): string {
+  const host =
+    context.request.headers["x-forwarded-host"] || context.request.headers["host"] || "";
+  const proto = context.request.headers["x-forwarded-proto"] || "https";
+  return host ? `${proto}://${host}` : "";
+}
 
-  if (action === "submit") {
-    const body = await request.json().catch(() => ({} as any));
-    const name = String(body.name || "anon").slice(0, 40) || "anon";
-    const source = String(body.source || "");
-    const model = body.model ? String(body.model) : undefined;
+export async function onRequestPost(context: any) {
+  const body = (context.request.body || {}) as JudgeBody;
+  const name = String(body.name || "anon").slice(0, 40) || "anon";
+  const source = String(body.source || "");
+  const model = body.model ? String(body.model) : undefined;
+  const signal = context.request.signal as AbortSignal | undefined;
+  const baseUrl = requestBaseUrl(context);
 
-    // Stream the run as NDJSON so the UI can animate it (same protocol as dev).
-    const stream = new ReadableStream({
-      async start(controller) {
-        const enc = new TextEncoder();
-        const send = (e: unknown) => controller.enqueue(enc.encode(JSON.stringify(e) + "\n"));
-        try {
-          const { row, error } = await runSubmission({ name, author: "you", source, model }, { onEvent: send });
-          if (!error && row) {
-            const rows = await seedIfEmpty(context);
-            rows.push({ id: rid(), ...row });
-            await saveRows(context, rows);
-            send({ type: "leaderboard", rows: rank(rows) });
-          }
-        } catch (e: any) {
-          send({ type: "fatal", error: e?.message || String(e) });
+  const llmConfig = {
+    baseUrl: context.env.AI_GATEWAY_BASE_URL,
+    apiKey: context.env.AI_GATEWAY_API_KEY,
+    model: model || context.env.RUBRIC_MODEL,
+  };
+
+  const runCandidateFn = context.sandbox
+    ? createEdgeOneRunCandidate(context)
+    : undefined;
+
+  async function* runSubmissionStream(_signal?: AbortSignal): AsyncGenerator<string> {
+    const queue: Record<string, unknown>[] = [];
+    let finished = false;
+    let fatal: string | null = null;
+
+    const runPromise = runSubmission(
+      { name, author: "you", source, model },
+      {
+        llmConfig,
+        runCandidateFn,
+        signal: _signal,
+        onEvent: (e) => queue.push(e),
+      }
+    ).then(async ({ row, error }) => {
+      if (error) {
+        fatal = error;
+        return;
+      }
+      if (row && baseUrl) {
+        const lb = await postLeaderboardRow(baseUrl, row);
+        if (lb?.rows) {
+          queue.push({ type: "leaderboard", rows: rank(lb.rows as any[]) });
         }
-        controller.close();
-      },
+      }
+    }).finally(() => {
+      finished = true;
     });
-    return new Response(stream, { headers: { "content-type": "application/x-ndjson" } });
+
+    while (!finished || queue.length) {
+      if (_signal?.aborted) {
+        yield sseEvent({ type: "error_message", content: "run aborted" });
+        break;
+      }
+      while (queue.length) {
+        yield sseEvent(queue.shift()!);
+      }
+      if (!finished) await new Promise((r) => setTimeout(r, 40));
+    }
+
+    await runPromise;
+
+    if (fatal) {
+      yield sseEvent({ type: "compile_error", error: fatal });
+    }
   }
 
-  return json({ error: "unknown action" }, 400);
+  return createSSEResponse(runSubmissionStream, signal);
 }

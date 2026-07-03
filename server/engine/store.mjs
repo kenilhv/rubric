@@ -1,6 +1,7 @@
+import { rank } from "./rank.mjs";
+
 // Leaderboard persistence + ranking. Locally this is a JSON file; on EdgeOne the
-// same get/set map to context.store (see agents/judge/index.ts). Ranking is the
-// standard itself: correctness first, then efficiency tiebreaks.
+// leaderboard lives in a cloud function + Blob storage.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -30,17 +31,7 @@ export function saveRows(rows) {
 
 // The ranking function — this is the "standard". Higher score wins; ties break on
 // fewer tokens, then lower cost, then lower latency. Pure and deterministic.
-export function rank(rows) {
-  return [...rows]
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.tokens - b.tokens ||
-        a.cost_usd - b.cost_usd ||
-        a.latency_ms - b.latency_ms
-    )
-    .map((r, i) => ({ rank: i + 1, ...r }));
-}
+export { rank } from "./rank.mjs";
 
 export function addRow(row) {
   const rows = loadRows();

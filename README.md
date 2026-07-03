@@ -59,14 +59,17 @@ edgeone makers deploy    # one-click production
 
 `edgeone.json` declares the Vite frontend + the `judge` agent (`/agents/judge`).
 On deploy, `AI_GATEWAY_*` are auto-injected, so `server/engine/llm.mjs` switches from
-mock to the real gateway with no code change. The only swap in `agents/judge/index.ts`
-is the leaderboard moving from a local file to `context.store` (already wired).
+mock to the real gateway with no code change. The leaderboard persists via Blob storage
+in `cloud-functions/leaderboard/` (not session memory).
 
 ## Layout
 
 ```
-edgeone.json                 EdgeOne Makers config (frontend + judge agent)
-agents/judge/index.ts        Production judge (POST /agents/judge, streams NDJSON)
+edgeone.json                 EdgeOne Makers config (Vite frontend + agents + cloud functions)
+agents/judge/index.ts        Production judge (POST /judge, streams SSE)
+cloud-functions/
+  leaderboard/index.ts       GET/POST /leaderboard (Blob storage)
+  problem/index.ts           GET /problem
 server/
   dev-server.mjs             Local mirror of the judge for offline dev
   engine/

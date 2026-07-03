@@ -264,7 +264,7 @@ export default function App() {
           Ranking: correctness → tokens → cost → latency. Untrusted harnesses run sandboxed; usage metered
           per submission.
         </span>
-        <span className="stack">EdgeOne · Sandbox + AI Gateway + context.store</span>
+        <span className="stack">EdgeOne · Sandbox + AI Gateway + Blob storage</span>
       </footer>
     </div>
   );

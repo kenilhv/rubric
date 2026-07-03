@@ -6,14 +6,6 @@
     "command": "npm run build",
     "output": "dist"
   },
-  "agents": [
-    {
-      "name": "judge",
-      "entry": "agents/judge/index.ts",
-      "route": "/agents/judge",
-      "timeout": 120
-    }
-  ],
   "env": {
     "AI_GATEWAY_BASE_URL": "https://ai-gateway.edgeone.link/v1",
     "RUBRIC_MODEL": "claude-haiku-4-5-20251001"

@@ -1,0 +1,33 @@
+// Pre-verified baseline rows for instant leaderboard seed (no cold-start run).
+export const SEED_ROWS = [
+  {
+    id: "oneshot",
+    name: "One-Shot",
+    author: "house",
+    model: "claude-haiku-4-5-20251001",
+    mode: "code",
+    score: 2,
+    total: 4,
+    accuracy: 0.5,
+    tokens: 545,
+    calls: 4,
+    cost_usd: 0.0016,
+    latency_ms: 800,
+    at: "2026-07-03T00:00:00.000Z",
+  },
+  {
+    id: "selfrepair",
+    name: "Self-Repair",
+    author: "house",
+    model: "claude-haiku-4-5-20251001",
+    mode: "code",
+    score: 4,
+    total: 4,
+    accuracy: 1,
+    tokens: 910,
+    calls: 6,
+    cost_usd: 0.0026,
+    latency_ms: 1400,
+    at: "2026-07-03T00:00:01.000Z",
+  },
+];

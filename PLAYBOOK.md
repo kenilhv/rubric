@@ -43,9 +43,12 @@ verified end-to-end in the browser (submit → live run animation → leaderboar
 | Baseline harnesses (One-Shot, Self-Repair) + starter | `server/engine/harnesses/`, `baselines.mjs` | ✅ working, seed on boot |
 | Local dev API (mirrors the judge) | `server/dev-server.mjs` | ✅ working (`:8787`) |
 | Frontend (graphite/Linear, live run panel, leaderboard) | `src/` | ✅ working (`:5173`) |
-| EdgeOne agent endpoint | `agents/judge/index.ts` | ⚠️ **WRITTEN TO A GUESSED API — MUST BE PORTED (see §4)** |
-| Git repo | local `main`, commit `2c93c79` | ✅ committed, ❌ **not pushed yet** |
-| EdgeOne deploy | — | ❌ not done (CLI not installed/logged in here) |
+| EdgeOne agent endpoint | `agents/judge/index.ts` | ✅ ported (`onRequestPost`, SSE, sandbox) |
+| Leaderboard cloud fn | `cloud-functions/leaderboard/index.ts` | ✅ Blob + seed rows |
+| Problem cloud fn | `cloud-functions/problem/index.ts` | ✅ GET /problem |
+| Frontend EdgeOne paths | `src/api.ts` | ✅ `/judge`, `/leaderboard`, SSE parser |
+| Git repo | pushed to `kenilhv/rubric` | ✅ |
+| EdgeOne deploy | — | ❌ run `edgeone login` then `edgeone makers deploy` at venue |
 
 Run locally: `npm install && npm run dev` → web on 5173, judge API on 8787.
 (`scripts/dev.sh` wraps this for environments with minimal PATH; Node on THIS machine is
