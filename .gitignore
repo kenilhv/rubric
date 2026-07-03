@@ -8,4 +8,5 @@ server/.data
 
 # machine-specific tooling / local agent config
 .claude/
+.agents/
 .mcp.json
